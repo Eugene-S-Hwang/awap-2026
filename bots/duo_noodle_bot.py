@@ -9,7 +9,7 @@ from item import Pan, Plate, Food
 class BotPlayer:
     def __init__(self, map_copy):
         self.map = map_copy
-        self.assembly_counter = None 
+        self.assembly_counter = None
         self.cooker_loc = None
         self.my_bot_id = None
         
