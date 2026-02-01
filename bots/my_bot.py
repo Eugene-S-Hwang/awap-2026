@@ -6,6 +6,7 @@ from game_constants import Team, TileType, FoodType, ShopCosts
 from robot_controller import RobotController
 from item import Pan, Plate, Food
 from enum import Enum
+import math
 
 class States(Enum):
     NOTHING = -1
@@ -24,8 +25,6 @@ class States(Enum):
     WASH_DISH = 12
     GET_PLATE_FROM_SINKTABLE = 13
     TRASH = 14
-
-
 class BotPlayer:
     def __init__(self, map_copy):
         self.map = map_copy
@@ -36,9 +35,8 @@ class BotPlayer:
         self.sinktable_pos = None
         self.my_bot_id = None
         self.current_order = None
-        
+        self.orders = None
         self.state = States.INIT
-        
 
     def get_bfs_path(self, controller: RobotController, start: Tuple[int, int], target_predicate) -> Optional[Tuple[int, int]]:
         queue = deque([(start, [])]) 
@@ -87,6 +85,58 @@ class BotPlayer:
                         best_dist = dist
                         best_pos = (x, y)
         return best_pos
+    
+    def process_orders(self, controller: RobotController):
+        self.orders = []
+        orders = controller.get_orders(controller.get_team())
+        # print("Raw Orders: ", orders)
+        current_turn = controller.get_turn()
+        for order in orders:
+            if order['is_active'] == False: continue
+            reward = order['reward']
+            penalty = order['penalty']
+            cost = 0
+            est_time = 0
+            for food in order['required']:
+                cost += FoodType[food].buy_cost
+                est_time += FoodType[food].can_cook * 20 + FoodType[food].can_chop * 2 + 5
+            
+            time_remaining = order['expires_turn'] - current_turn
+            time_buffer = time_remaining - est_time
+            
+            # Convert time buffer to success probability using sigmoid
+            p_success = 1.0 / (1.0 + math.exp(-time_buffer / 5.0))
+            
+            # Expected value
+            ev = (reward - cost) * p_success - (penalty + cost) * (1 - p_success)
+            order['ev'] = ev
+            order['cost'] = cost
+            order['est_time'] = est_time
+            order['p_success'] = p_success
+            self.orders.append(order)
+        self.orders.sort(key=lambda x: x['ev'], reverse=True)
+        # print(self.orders)
+    
+    # def update_orders(self, controller: RobotController):
+    #     orders = controller.get_orders(controller.get_team())
+    #     current_turn = controller.get_turn()
+    #     for order in orders:
+    #         if order['is_active'] == False: continue
+    #         reward = order['reward']
+    #         penalty = order['penalty']
+    #         cost = order['cost']
+    #         est_time = order['est_time']
+    #         time_remaining = order['expires_turn'] - current_turn
+    #         time_buffer = time_remaining - est_time
+            
+    #         # Convert time buffer to success probability using sigmoid
+    #         p_success = 1.0 / (1.0 + math.exp(-time_buffer / 5.0))
+            
+    #         # Expected value
+    #         ev = (reward - cost) * p_success - (penalty + cost) * (1 - p_success)
+    #         order['ev'] = ev
+    #         order['p_success'] = p_success
+    #     self.orders.sort(key=lambda x: x['ev'], reverse=True)
 
     def play_turn(self, controller: RobotController):
         my_bots = controller.get_team_bot_ids(controller.get_team())
@@ -95,13 +145,21 @@ class BotPlayer:
         self.my_bot_id = my_bots[0]
         bot_id = self.my_bot_id
 
-        self.orders = controller.get_orders(controller.get_team())
+        # self.orders = controller.get_orders(controller.get_team())
         if(not self.current_order):
+            # if self.orders is None:
+            self.process_orders(controller)
+            # else:
+            #     self.update_orders(controller)
             for order in self.orders:
                 # print("Check: ", order["claimed_by"])
+                # print(order)
                 if order["claimed_by"] is None:
                     self.current_order = order
+                    print(self.current_order)
+                    print(controller.get_turn())
                     break
+        
         
         bot_info = controller.get_bot_state(bot_id)
         bx, by = bot_info['x'], bot_info['y']
