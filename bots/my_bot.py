@@ -145,10 +145,10 @@ class BotPlayer:
         self.my_bot_id = my_bots[0]
         bot_id = self.my_bot_id
 
-        # self.orders = controller.get_orders(controller.get_team())
+        self.orders = controller.get_orders(controller.get_team())
         if(not self.current_order):
             # if self.orders is None:
-            self.process_orders(controller)
+            # self.process_orders(controller)
             # else:
             #     self.update_orders(controller)
             for order in self.orders:
@@ -189,7 +189,7 @@ class BotPlayer:
 
         #state 0: init + checking the pan
             
-        # print(self.state)
+        print(self.state)
         if self.state == States.INIT:
             if(not self.current_order):
                 self.state = States.NOTHING
@@ -221,11 +221,10 @@ class BotPlayer:
             if len(self.current_order["required"]) == 0:
                 self.state = States.SUBMIT
             else:
-                buyFood = self.current_order["required"].pop()
-                # print(buyFood)
                 shop_pos = self.find_nearest_tile(controller, bx, by, "SHOP")
                 sx, sy = shop_pos
                 if self.move_towards(controller, bot_id, sx, sy):
+                    buyFood = self.current_order["required"].pop()
                     if(buyFood == "MEAT"):
                         if controller.get_team_money(controller.get_team()) >= FoodType.MEAT.buy_cost:
                             if controller.buy(bot_id, FoodType.MEAT, sx, sy):
@@ -239,6 +238,7 @@ class BotPlayer:
                             if controller.buy(bot_id, FoodType.ONIONS, sx, sy):
                                 self.state = States.PLACE_ON_COUNTER
                     elif(buyFood == "NOODLES"):
+                        print("checked")
                         if controller.get_team_money(controller.get_team()) >= FoodType.NOODLES.buy_cost:
                             if controller.buy(bot_id, FoodType.NOODLES, sx, sy):
                                 self.state = States.ADD_FOOD
@@ -316,12 +316,14 @@ class BotPlayer:
                     if controller.submit(bot_id, ux, uy):
                         self.current_order = None
                         self.state = States.WASH_DISH
+                    else:
+                        self.state = States.TRASH
         
         elif self.state == States.WASH_DISH:
             if self.move_towards(controller, bot_id, wx, wy):
                 st_tile = controller.get_tile(controller.get_team(), stx, sty)
 
-                if st_tile and hasattr(st_tile, 'num_clean_plates') and st_tile.num_clean_plates > 0:
+                if st_tile and st_tile.num_clean_plates > 0:
                     self.state = States.GET_PLATE_FROM_SINKTABLE
                 else:
                     controller.wash_sink(bot_id, wx, wy)
@@ -332,15 +334,15 @@ class BotPlayer:
                 if controller.take_clean_plate(bot_id, stx, sty):
                     self.state = States.PLACE_PLATE
 
-        elif self.state == 16:
+        elif self.state == States.TRASH:
             trash_pos = self.find_nearest_tile(controller, bx, by, "TRASH")
             if not trash_pos: return
             tx, ty = trash_pos
             if self.move_towards(controller, bot_id, tx, ty):
                 if controller.trash(bot_id, tx, ty):
-                    if bot_info["holding"].type == "Food":
+                    if bot_info["holding"]["type"] == "Food":
                         self.current_order["required"].append(bot_info["holding"].food_name)
-                    self.state = States.BUY_FOOD #restart
+                    self.state = States.INIT #restart
         elif self.state == States.NOTHING:
             for i in range(len(my_bots)):
                 self.my_bot_id = my_bots[i]

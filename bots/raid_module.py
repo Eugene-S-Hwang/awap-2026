@@ -1,5 +1,3 @@
-
-
 from typing import Tuple, Optional
 from collections import deque
 from enum import Enum
