@@ -21,8 +21,8 @@ class States(Enum):
     ADD_FOOD = 9
     WAIT_AND_TAKE = 10
     SUBMIT = 11
-    PLACE_IN_SINK = 12
-    WASH_DISH = 13
+    WASH_DISH = 12
+    GET_PLATE_FROM_SINKTABLE = 13
     TRASH = 14
 
 
@@ -33,6 +33,7 @@ class BotPlayer:
         self.cooker_loc = None
         self.submit_pos = None
         self.sink_pos = None
+        self.sinktable_pos = None
         self.my_bot_id = None
         self.current_order = None
         
@@ -113,6 +114,8 @@ class BotPlayer:
             self.submit_pos = self.find_nearest_tile(controller, bx, by, "SUBMIT")
         if self.sink_pos is None:
             self.sink_pos = self.find_nearest_tile(controller, bx, by, "SINK")
+        if self.sinktable_pos is None:
+            self.sinktable_pos = self.find_nearest_tile(controller, bx, by, "SINKTABLE")
 
         if not self.assembly_counter or not self.cooker_loc or not self.submit_pos: 
             return
@@ -121,6 +124,7 @@ class BotPlayer:
         kx, ky = self.cooker_loc
         ux, uy = self.submit_pos
         wx, wy = self.sink_pos
+        stx, sty = self.sinktable_pos
 
         if self.state in [2, 8, 10] and bot_info.get('holding'):
             self.state = 16
@@ -224,9 +228,12 @@ class BotPlayer:
                         self.state = States.PLACE_PLATE
 
         elif self.state == States.PLACE_PLATE:
-            if self.move_towards(controller, bot_id, ux, uy):
-                if controller.place(bot_id, ux, uy):
-                    self.state = States.INIT
+            if not bot_info["holding"]:
+                controller.pickup(bot_id, bx, by)
+            else:
+                if self.move_towards(controller, bot_id, ux, uy):
+                    if controller.place(bot_id, ux, uy):
+                        self.state = States.INIT
 
         elif self.state == States.ADD_FOOD:
             if self.move_towards(controller, bot_id, ux, uy):
@@ -252,16 +259,17 @@ class BotPlayer:
                 else:
                     if controller.submit(bot_id, ux, uy):
                         self.current_order = None
-                        self.state = States.PLACE_IN_SINK
-        
-        elif self.state == States.PLACE_IN_SINK:
-            if self.move_towards(controller, bot_id, wx, wy):
-                if controller.put_dirty_plate_in_sink(bot_id, wx, wy):
-                    self.state = States.WASH_DISH
+                        self.state = States.WASH_DISH
         
         elif self.state == States.WASH_DISH:
-            if controller.wash_sink(bot_id, wx, wy):
-                self.state = States.PLACE_PLATE
+            if self.move_towards(controller, bot_id, wx, wy):
+                if controller.wash_sink(bot_id, wx, wy):
+                    self.state = States.GET_PLATE_FROM_SINKTABLE
+        
+        elif self.state == States.GET_PLATE_FROM_SINKTABLE:
+            if self.move_towards(controller, bot_id, stx, sty):
+                if controller.pickup(bot_id, stx, sty):
+                    self.state = States.PLACE_PLATE
 
         elif self.state == 16:
             trash_pos = self.find_nearest_tile(controller, bx, by, "TRASH")
