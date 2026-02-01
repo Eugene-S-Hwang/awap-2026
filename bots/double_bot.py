@@ -38,6 +38,7 @@ class BotPlayer:
         self.b_pos_x = {}
         self.b_pos_y = {}
         self.orders = None
+        self.nextMove = {}
 
         self.tile_cache = {}
         self._build_tile_cache()
@@ -48,53 +49,110 @@ class BotPlayer:
 
         self.state = {}
 
-    def get_bfs_path(self, controller: RobotController, start: Tuple[int, int], target: Tuple[int, int]) -> Optional[Tuple[int, int]]:
-        """BFS with caching - now takes target coordinates instead of predicate"""
-        cache_key = (start, target)
-        
-        # Check cache
-        if cache_key in self.path_cache:
-            self.cache_hits += 1
-            return self.path_cache[cache_key]
-        
-        self.cache_misses += 1
-        
-        queue = deque([(start, [])])
-        visited = set([start])
-        w, h = self.map.width, self.map.height
-        
-        while queue:
-            (curr_x, curr_y), path = queue.popleft()
-            
-            # Check if adjacent to target (Chebyshev distance)
-            if max(abs(curr_x - target[0]), abs(curr_y - target[1])) <= 1:
-                result = path[0] if path else (0, 0)
-                self.path_cache[cache_key] = result
-                return result
-            
-            for dx, dy in [(0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
-                nx, ny = curr_x + dx, curr_y + dy
-                if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in visited:
-                    if self.map.tiles[nx][ny].is_walkable:  # Use cached map instead of controller call
-                        visited.add((nx, ny))
-                        queue.append(((nx, ny), path + [(dx, dy)]))
-        
-        self.path_cache[cache_key] = None
-        return None
+    def get_bfs_path(
+        self,
+        controller: RobotController,
+        start: Tuple[int, int],
+        target: Tuple[int, int],
+        bot_id: int
+    ) -> Optional[Tuple[int, int]]:
 
+        if not hasattr(self, "avoid_pos"):
+            self.avoid_pos = {}
+
+        avoid = self.avoid_pos.get(bot_id)
+
+        obstacles = set()
+        for k in self.b_pos_x:
+            if k != bot_id:
+                ox, oy = self.b_pos_x[k], self.b_pos_y[k]
+                if ox is not None:
+                    obstacles.add((ox, oy))
+
+        queue = deque([(start, [])])
+        visited = {start}
+        w, h = self.map.width, self.map.height
+
+        directions = [
+            (0, 0),
+            (0, -1), (0, 1), (-1, 0), (1, 0),
+            (-1, -1), (-1, 1), (1, -1), (1, 1)
+        ]
+
+        while queue:
+            (cx, cy), path = queue.popleft()
+
+            if max(abs(cx - target[0]), abs(cy - target[1])) <= 1:
+                return path[0] if path else (0, 0)
+
+            for dx, dy in directions:
+                nx, ny = cx + dx, cy + dy
+
+                if not (0 <= nx < w and 0 <= ny < h):
+                    continue
+                if (nx, ny) in visited:
+                    continue
+                if (nx, ny) in obstacles:
+                    continue
+                if not self.map.tiles[nx][ny].is_walkable:
+                    continue
+
+                # 🚫 avoid forced-reverse tile
+                if avoid and (nx, ny) == avoid:
+                    continue
+
+                visited.add((nx, ny))
+                queue.append(((nx, ny), path + [(dx, dy)]))
+
+        return None
+    
     def move_towards(self, controller: RobotController, bot_id: int, target_x: int, target_y: int) -> bool:
         bot_state = controller.get_bot_state(bot_id)
         bx, by = bot_state['x'], bot_state['y']
         
-        # Check if already adjacent
+        # Update position
+        self.b_pos_x[bot_id] = bx
+        self.b_pos_y[bot_id] = by
+        
+        # Already adjacent
         if max(abs(bx - target_x), abs(by - target_y)) <= 1:
             return True
         
-        step = self.get_bfs_path(controller, (bx, by), (target_x, target_y))
-        if step and step != (0, 0):
-            controller.move(bot_id, step[0], step[1])
+        step = self.get_bfs_path(controller, (bx, by), (target_x, target_y), bot_id)
+        
+        # If no path found, wait (don't move)
+        if not step or step == (0, 0):
             return False
+        
+        # Check if the next step is occupied by another bot
+        next_x, next_y = bx + step[0], by + step[1]
+        for k in self.b_pos_x.keys():
+            if k != bot_id:
+                if self.b_pos_x[k] == next_x and self.b_pos_y[k] == next_y:
+                    # Another bot is in the way, wait
+                    return False
+        
+        # Safe to move
+        self.b_pos_x[bot_id] = next_x
+        self.b_pos_y[bot_id] = next_y
+        controller.move(bot_id, step[0], step[1])
         return False
+
+
+    # def move_towards(self, controller: RobotController, bot_id: int, target_x: int, target_y: int) -> bool:
+    #     bot_state = controller.get_bot_state(bot_id)
+    #     bx, by = bot_state['x'], bot_state['y']
+        
+    #     # Check if already adjacent
+    #     if max(abs(bx - target_x), abs(by - target_y)) <= 1:
+    #         return True
+        
+    #     step = self.get_bfs_path(controller, (bx, by), (target_x, target_y))
+    #     if step and step != (0, 0):
+    #         self.nextMove[bot_id] = (step[0], step[1])
+    #         controller.move(bot_id, step[0], step[1])
+    #         return False
+    #     return False
 
     def _build_tile_cache(self):
         """Build cache of all tile locations once at initialization"""
@@ -311,6 +369,9 @@ class BotPlayer:
         #state 0: init + checking the pan
             
         if bot_id not in self.state:
+            self.state[bot_id] = States.INIT
+        
+        if self.current_order[bot_id] is not None and self.state[bot_id] == States.NOTHING:
             self.state[bot_id] = States.INIT
 
         if self.state[bot_id] == States.INIT:
