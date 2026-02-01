@@ -57,7 +57,7 @@ class BotPlayer:
                     if dx == 0 and dy == 0: continue
                     nx, ny = curr_x + dx, curr_y + dy
                     if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in visited:
-                        if controller.get_map().is_tile_walkable(nx, ny):
+                        if controller.get_map(controller.get_team()).is_tile_walkable(nx, ny):
                             visited.add((nx, ny))
                             queue.append(((nx, ny), path + [(dx, dy)]))
         return None
@@ -77,7 +77,7 @@ class BotPlayer:
     def find_nearest_tile(self, controller: RobotController, bot_x: int, bot_y: int, tile_name: str) -> Optional[Tuple[int, int]]:
         best_dist = 9999
         best_pos = None
-        m = controller.get_map()
+        m = controller.get_map(controller.get_team())
         for x in range(m.width):
             for y in range(m.height):
                 tile = m.tiles[x][y]
@@ -89,13 +89,13 @@ class BotPlayer:
         return best_pos
 
     def play_turn(self, controller: RobotController):
-        my_bots = controller.get_team_bot_ids()
+        my_bots = controller.get_team_bot_ids(controller.get_team())
         if not my_bots: return
     
         self.my_bot_id = my_bots[0]
         bot_id = self.my_bot_id
 
-        self.orders = controller.get_orders()
+        self.orders = controller.get_orders(controller.get_team())
         if(not self.current_order):
             for order in self.orders:
                 # print("Check: ", order["claimed_by"])
@@ -145,7 +145,6 @@ class BotPlayer:
                 else:
                     self.state = States.BUY_PAN
 
-        #state 1: buy pan
         elif self.state == States.BUY_PAN:
             holding = bot_info.get('holding')
             if holding: # check if it is a pan if needed
@@ -157,10 +156,9 @@ class BotPlayer:
                 if not shop_pos: return
                 sx, sy = shop_pos
                 if self.move_towards(controller, bot_id, sx, sy):
-                    if controller.get_team_money() >= ShopCosts.PAN.buy_cost:
+                    if controller.get_team_money(controller.get_team()) >= ShopCosts.PAN.buy_cost:
                         controller.buy(bot_id, ShopCosts.PAN, sx, sy)
 
-        #state 2: buy meat
         elif self.state == States.BUY_FOOD:
             if len(self.current_order["required"]) == 0:
                 self.state = States.SUBMIT
@@ -171,23 +169,23 @@ class BotPlayer:
                 sx, sy = shop_pos
                 if self.move_towards(controller, bot_id, sx, sy):
                     if(buyFood == "MEAT"):
-                        if controller.get_team_money() >= FoodType.MEAT.buy_cost:
+                        if controller.get_team_money(controller.get_team()) >= FoodType.MEAT.buy_cost:
                             if controller.buy(bot_id, FoodType.MEAT, sx, sy):
                                 self.state = States.PLACE_ON_COUNTER
                     elif(buyFood == "EGG"):
-                        if controller.get_team_money() >= FoodType.EGG.buy_cost:
+                        if controller.get_team_money(controller.get_team()) >= FoodType.EGG.buy_cost:
                             if controller.buy(bot_id, FoodType.EGG, sx, sy):
                                 self.state = States.COOK_FOOD
                     elif(buyFood == "ONIONS"):
-                        if controller.get_team_money() >= FoodType.ONIONS.buy_cost:
+                        if controller.get_team_money(controller.get_team()) >= FoodType.ONIONS.buy_cost:
                             if controller.buy(bot_id, FoodType.ONIONS, sx, sy):
                                 self.state = States.PLACE_ON_COUNTER
                     elif(buyFood == "NOODLES"):
-                        if controller.get_team_money() >= FoodType.NOODLES.buy_cost:
+                        if controller.get_team_money(controller.get_team()) >= FoodType.NOODLES.buy_cost:
                             if controller.buy(bot_id, FoodType.NOODLES, sx, sy):
                                 self.state = States.ADD_FOOD
                     elif(buyFood == "SAUCE"):
-                        if controller.get_team_money() >= FoodType.SAUCE.buy_cost:
+                        if controller.get_team_money(controller.get_team()) >= FoodType.SAUCE.buy_cost:
                             if controller.buy(bot_id, FoodType.SAUCE, sx, sy):
                                 self.state = States.ADD_FOOD
 
@@ -223,7 +221,7 @@ class BotPlayer:
             shop_pos = self.find_nearest_tile(controller, bx, by, "SHOP")
             sx, sy = shop_pos
             if self.move_towards(controller, bot_id, sx, sy):
-                if controller.get_team_money() >= ShopCosts.PLATE.buy_cost:
+                if controller.get_team_money(controller.get_team()) >= ShopCosts.PLATE.buy_cost:
                     if controller.buy(bot_id, ShopCosts.PLATE, sx, sy):
                         self.state = States.PLACE_PLATE
 
@@ -263,12 +261,17 @@ class BotPlayer:
         
         elif self.state == States.WASH_DISH:
             if self.move_towards(controller, bot_id, wx, wy):
-                if controller.wash_sink(bot_id, wx, wy):
+                st_tile = controller.get_tile(controller.get_team(), stx, sty)
+
+                if st_tile and hasattr(st_tile, 'num_clean_plates') and st_tile.num_clean_plates > 0:
                     self.state = States.GET_PLATE_FROM_SINKTABLE
+                else:
+                    controller.wash_sink(bot_id, wx, wy)
+                    
         
         elif self.state == States.GET_PLATE_FROM_SINKTABLE:
             if self.move_towards(controller, bot_id, stx, sty):
-                if controller.pickup(bot_id, stx, sty):
+                if controller.take_clean_plate(bot_id, stx, sty):
                     self.state = States.PLACE_PLATE
 
         elif self.state == 16:
@@ -281,7 +284,7 @@ class BotPlayer:
                         self.current_order["required"].append(bot_info["holding"].food_name)
                     self.state = States.BUY_FOOD #restart
         elif self.state == States.NOTHING:
-            for i in range(1, len(my_bots)):
+            for i in range(len(my_bots)):
                 self.my_bot_id = my_bots[i]
                 bot_id = self.my_bot_id
                 
@@ -291,6 +294,6 @@ class BotPlayer:
                 dx = random.choice([-1, 1])
                 dy = random.choice([-1, 1])
                 nx,ny = bx + dx, by + dy
-                if controller.get_map().is_tile_walkable(nx, ny):
-                    controller.move(bot_id, dx, dy)
+                if controller.can_move(bot_id, nx, ny):
+                    controller.move(bot_id, nx, ny)
                     return
