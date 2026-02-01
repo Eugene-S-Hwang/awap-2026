@@ -108,12 +108,6 @@ class BotPlayer:
         queue = deque([(start, [])])
         visited = set([start])
         w, h = self.map.width, self.map.height
-
-        obstacles = set()
-
-        for bots in controller.get_team_bot_ids(controller.get_team()):
-            bot_info = controller.get_bot_state(bots)
-            obstacles.add((bot_info['x'], bot_info['y']))
         
         while queue:
             (curr_x, curr_y), path = queue.popleft()
@@ -126,7 +120,7 @@ class BotPlayer:
             
             for dx, dy in [(0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
                 nx, ny = curr_x + dx, curr_y + dy
-                if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in visited and (nx, ny) not in obstacles:
+                if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in visited:
                     if self.map.tiles[nx][ny].is_walkable:  # Use cached map instead of controller call
                         visited.add((nx, ny))
                         queue.append(((nx, ny), path + [(dx, dy)]))
@@ -170,81 +164,23 @@ class BotPlayer:
         # Find minimum using Chebyshev distance
         return min(positions, key=lambda pos: max(abs(bot_x - pos[0]), abs(bot_y - pos[1])))
     
-    def estimate_travel_time(self, start: Tuple[int, int], end: Tuple[int, int]) -> int:
-        """Estimate travel time using Chebyshev distance (max of dx, dy)"""
-        return max(abs(start[0] - end[0]), abs(start[1] - end[1]))
-
-    def calculate_order_time_fast(self, controller: RobotController, order: dict, bot_x: int, bot_y: int) -> int:
-        """Fast estimate using direct distances instead of pathfinding"""
-        
-        # Find key locations (cached)
-        shop = self.tile_cache.get("SHOP", [None])[0]
-        counter = self.tile_cache.get("COUNTER", [None])[0]
-        cooker = self.tile_cache.get("COOKER", [None])[0]
-        submit = self.tile_cache.get("SUBMIT", [None])[0]
-        
-        if not all([shop, counter, cooker, submit]):
-            # Fallback
-            return len(order['required']) * 30
-        
-        est_time = 0
-        current_pos = (bot_x, bot_y)
-        
-        # Average distance for a workflow
-        avg_shop_to_counter = self.estimate_travel_time(shop, counter)
-        avg_counter_to_cooker = self.estimate_travel_time(counter, cooker)
-        avg_cooker_to_submit = self.estimate_travel_time(cooker, submit)
-        
-        for food_name in order['required']:
-            food_type = FoodType[food_name]
-            
-            # Shop trip
-            est_time += self.estimate_travel_time(current_pos, shop) + 1
-            current_pos = shop
-            
-            # Chopping workflow
-            if food_type.can_chop:
-                est_time += avg_shop_to_counter + 1 + 2 + 1  # travel + place + chop + pickup
-                current_pos = counter
-            
-            # Cooking workflow
-            if food_type.can_cook:
-                est_time += avg_counter_to_cooker + 1 + 20 + 1  # travel + place + cook + take
-                current_pos = cooker
-            
-            # To submit
-            est_time += self.estimate_travel_time(current_pos, submit) + 1
-            current_pos = submit
-        
-        # Pan/plate setup overhead
-        # est_time += 15
-        
-        return est_time
-    
     def process_orders(self, controller: RobotController):
         self.orders = []
         orders = controller.get_orders(controller.get_team())
         # print("Raw Orders: ", orders)
         current_turn = controller.get_turn()
-
-        bot_info = controller.get_bot_state(controller.get_team_bot_ids(controller.get_team())[0])
-        bot_x, bot_y = bot_info['x'], bot_info['y']
         for order in orders:
-            if order['expires_turn'] < current_turn: continue
+            if order['is_active'] == False: continue
             reward = order['reward']
             penalty = order['penalty']
             cost = 0
             est_time = 0
             for food in order['required']:
                 cost += FoodType[food].buy_cost
-                est_time += FoodType[food].can_cook * 20 + FoodType[food].can_chop * 2 + 20
-                # est_time = self.calculate_order_time_fast(controller, order, bot_x, bot_y)
+                est_time += FoodType[food].can_cook * 20 + FoodType[food].can_chop * 2 + 5
             
             time_remaining = order['expires_turn'] - current_turn
             time_buffer = time_remaining - est_time
-
-            if controller.get_turn() + est_time < order["created_turn"]:
-                continue
             
             # Convert time buffer to success probability using sigmoid
             p_success = 1.0 / (1.0 + math.exp(-time_buffer / 5.0))
@@ -308,20 +244,16 @@ class BotPlayer:
         bot_info = controller.get_bot_state(bot_id)
         bx, by = bot_info['x'], bot_info['y']
 
-        # if self.assembly_counter is None:
-        #     self.assembly_counter = self.find_nearest_tile(controller, bx, by, "COUNTER")
-        # if self.cooker_loc is None:
-        #     self.cooker_loc = self.find_nearest_tile(controller, bx, by, "COOKER")
+        if self.assembly_counter is None:
+            self.assembly_counter = self.find_nearest_tile(controller, bx, by, "COUNTER")
+        if self.cooker_loc is None:
+            self.cooker_loc = self.find_nearest_tile(controller, bx, by, "COOKER")
         if self.submit_pos is None:
             self.submit_pos = self.find_nearest_tile(controller, bx, by, "SUBMIT")
-        # if self.sink_pos is None:
-        #     self.sink_pos = self.find_nearest_tile(controller, bx, by, "SINK")
-        # if self.sinktable_pos is None:
-        #     self.sinktable_pos = self.find_nearest_tile(controller, bx, by, "SINKTABLE")
-            
-        self.assembly_counter = self.find_nearest_tile(controller, bx, by, "COUNTER")
-        self.cooker_loc = self.find_nearest_tile(controller, bx, by, "COOKER")
-        # self.submit_pos = self.find_nearest_tile(controller, bx, by, "SUBMIT")
+        if self.sink_pos is None:
+            self.sink_pos = self.find_nearest_tile(controller, bx, by, "SINK")
+        if self.sinktable_pos is None:
+            self.sinktable_pos = self.find_nearest_tile(controller, bx, by, "SINKTABLE")
 
         if not self.assembly_counter or not self.cooker_loc or not self.submit_pos: 
             return
@@ -329,10 +261,10 @@ class BotPlayer:
         cx, cy = self.assembly_counter
         kx, ky = self.cooker_loc
         ux, uy = self.submit_pos
-        # wx, wy = self.sink_pos
-        # stx, sty = self.sinktable_pos
+        wx, wy = self.sink_pos
+        stx, sty = self.sinktable_pos
 
-        if not self.get_bfs_path(controller, (bx, by), (cx, cy)) or not self.get_bfs_path(controller, (bx, by), (kx, ky)) or not self.get_bfs_path(controller, (bx, by), (ux, uy)): # or not self.get_bfs_path(controller, (bx, by), (wx, wy)) or not self.get_bfs_path(controller, (bx, by), (stx, sty)):
+        if not self.get_bfs_path(controller, (bx, by), (cx, cy)) or not self.get_bfs_path(controller, (bx, by), (kx, ky)) or not self.get_bfs_path(controller, (bx, by), (ux, uy)) or not self.get_bfs_path(controller, (bx, by), (wx, wy)) or not self.get_bfs_path(controller, (bx, by), (stx, sty)):
             return
 
         # if self.state in [2, 8, 10] and bot_info.get('holding'):
@@ -340,7 +272,7 @@ class BotPlayer:
 
         #state 0: init + checking the pan
 
-        print(self.state)
+        # print(self.state)
         if self.state == States.INIT:
             if(not self.current_order):
                 self.state = States.NOTHING
@@ -469,31 +401,30 @@ class BotPlayer:
                 if not bot_info["holding"]:
                     controller.pickup(bot_id, ux, uy)
                 else:
-                    if self.current_order["created_turn"] <= controller.get_turn():
-                        if controller.submit(bot_id, ux, uy):
+                    if controller.submit(bot_id, ux, uy):
+                        self.current_order = None
+                        # self.state = States.WASH_DISH
+                        self.state = States.INIT
+                    else:
+                        if self.current_order["expires_turn"] <= controller.get_turn():
                             self.current_order = None
-                            # self.state = States.WASH_DISH
-                            self.state = States.INIT
-                        else:
-                            if self.current_order["expires_turn"] <= controller.get_turn():
-                                self.current_order = None
-                            self.state = States.TRASH
+                        self.state = States.TRASH
         
-        # elif self.state == States.WASH_DISH:
-        #     if self.move_towards(controller, bot_id, wx, wy):
-        #         st_tile = controller.get_tile(controller.get_team(), stx, sty)
+        elif self.state == States.WASH_DISH:
+            if self.move_towards(controller, bot_id, wx, wy):
+                st_tile = controller.get_tile(controller.get_team(), stx, sty)
 
-        #         if st_tile and st_tile.num_clean_plates > 0:
-        #             self.state = States.GET_PLATE_FROM_SINKTABLE
-        #         else:
-        #             if not controller.wash_sink(bot_id, wx, wy):
-        #                 self.state = States.INIT
+                if st_tile and st_tile.num_clean_plates > 0:
+                    self.state = States.GET_PLATE_FROM_SINKTABLE
+                else:
+                    if not controller.wash_sink(bot_id, wx, wy):
+                        self.state = States.INIT
                     
         
-        # elif self.state == States.GET_PLATE_FROM_SINKTABLE:
-        #     if self.move_towards(controller, bot_id, stx, sty):
-        #         if controller.take_clean_plate(bot_id, stx, sty):
-        #             self.state = States.PLACE_PLATE
+        elif self.state == States.GET_PLATE_FROM_SINKTABLE:
+            if self.move_towards(controller, bot_id, stx, sty):
+                if controller.take_clean_plate(bot_id, stx, sty):
+                    self.state = States.PLACE_PLATE
 
         elif self.state == States.TRASH:
             if not bot_info["holding"]:
