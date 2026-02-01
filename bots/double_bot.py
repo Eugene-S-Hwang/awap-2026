@@ -25,7 +25,6 @@ class States(Enum):
     WASH_DISH = 12
     GET_PLATE_FROM_SINKTABLE = 13
     TRASH = 14
-
 class BotPlayer:
     def __init__(self, map_copy):
         self.map = map_copy
@@ -34,9 +33,12 @@ class BotPlayer:
         self.submit_pos = None
         self.sink_pos = None
         self.sinktable_pos = None
-        self.my_bot_id = None
-        self.current_order = None
+        # self.my_bot_id = None
+        self.current_order = {}
+        self.b_pos_x = {}
+        self.b_pos_y = {}
         self.orders = None
+
         self.tile_cache = {}
         self._build_tile_cache()
 
@@ -44,56 +46,8 @@ class BotPlayer:
         self.cache_hits = 0
         self.cache_misses = 0
 
-        self.state = States.INIT
+        self.state = {}
 
-    # def get_bfs_path(self, controller: RobotController, start: Tuple[int, int], target_predicate) -> Optional[Tuple[int, int]]:
-    #     queue = deque([(start, [])]) 
-    #     visited = set([start])
-    #     w, h = self.map.width, self.map.height
-
-    #     while queue:
-    #         (curr_x, curr_y), path = queue.popleft()
-    #         tile = controller.get_tile(controller.get_team(), curr_x, curr_y)
-    #         if target_predicate(curr_x, curr_y, tile):
-    #             if not path: return (0, 0) 
-    #             return path[0] 
-
-    #         for dx in [0, -1, 1]:
-    #             for dy in [0, -1, 1]:
-    #                 if dx == 0 and dy == 0: continue
-    #                 nx, ny = curr_x + dx, curr_y + dy
-    #                 if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in visited:
-    #                     if controller.get_map(controller.get_team()).is_tile_walkable(nx, ny):
-    #                         visited.add((nx, ny))
-    #                         queue.append(((nx, ny), path + [(dx, dy)]))
-    #     return None
-
-    # def move_towards(self, controller: RobotController, bot_id: int, target_x: int, target_y: int) -> bool:
-    #     bot_state = controller.get_bot_state(bot_id)
-    #     bx, by = bot_state['x'], bot_state['y']
-    #     def is_adjacent_to_target(x, y, tile):
-    #         return max(abs(x - target_x), abs(y - target_y)) <= 1
-    #     if is_adjacent_to_target(bx, by, None): return True
-    #     step = self.get_bfs_path(controller, (bx, by), is_adjacent_to_target)
-    #     if step and (step[0] != 0 or step[1] != 0):
-    #         controller.move(bot_id, step[0], step[1])
-    #         return False 
-    #     return False 
-
-    # def find_nearest_tile(self, controller: RobotController, bot_x: int, bot_y: int, tile_name: str) -> Optional[Tuple[int, int]]:
-    #     best_dist = 9999
-    #     best_pos = None
-    #     m = controller.get_map(controller.get_team())
-    #     for x in range(m.width):
-    #         for y in range(m.height):
-    #             tile = m.tiles[x][y]
-    #             if tile.tile_name == tile_name:
-    #                 dist = max(abs(bot_x - x), abs(bot_y - y))
-    #                 if dist < best_dist:
-    #                     best_dist = dist
-    #                     best_pos = (x, y)
-    #     return best_pos
-        
     def get_bfs_path(self, controller: RobotController, start: Tuple[int, int], target: Tuple[int, int]) -> Optional[Tuple[int, int]]:
         """BFS with caching - now takes target coordinates instead of predicate"""
         cache_key = (start, target)
@@ -170,7 +124,7 @@ class BotPlayer:
         # print("Raw Orders: ", orders)
         current_turn = controller.get_turn()
         for order in orders:
-            if order['is_active'] == False: continue
+            if order['is_active'] == False or order['claimed_by'] != None: continue
             reward = order['reward']
             penalty = order['penalty']
             cost = 0
@@ -216,33 +170,120 @@ class BotPlayer:
     #         order['p_success'] = p_success
     #     self.orders.sort(key=lambda x: x['ev'], reverse=True)
 
+    # def play_turn(self, controller: RobotController):
+    #     my_bots = controller.get_team_bot_ids(controller.get_team())
+    #     if not my_bots: return
+    
+    #     # self.my_bot_id = my_bots[0]
+    #     # bot_id = self.my_bot_id
+        
+    #     # tmp_orders = controller.get_orders(controller.get_team())
+    #     # print("tmp_orders: ", tmp_orders)
+    #     # for order in tmp_orders:
+    #     #     print("order: ", order["order_id"])
+    #     #     if self.current_order_b1 and order["order_id"] == self.current_order_b1["order_id"] and order["is_active"] == False:
+    #     #         self.current_order_b1 = None
+    #     #     if self.current_order_b2 and order["order_id"] == self.current_order_b2["order_id"] and order["is_active"] == False:
+    #     #         self.current_order_b2 = None
+
+    #     # self.orders = controller.get_orders(controller.get_team())
+    #     for bot_id, bot_order in enumerate(self.current_order):
+    #         if bot_order is None: 
+    #             self.process_orders(controller)
+    #             # print("orders: ", self.orders)
+    #             for order in self.orders:
+    #                 for assigned_order in self.current_order:
+    #                     if assigned_order is not None and order["order_id"] == assigned_order["order_id"]:
+    #                         break
+    #                 else:
+    #                     self.current_order[bot_id] = order
+    #                     print("assigned order: ", order)
+    #                     print("bot_id: ", bot_id)
+        
+    #     # raise Exception("test")
+    #     #         self.current_order[bot_id] = self.orders[0] if len(self.orders) > 0 and self.else None
+    #     #     if bot_order["is_active"] == False:
+    #     #         self.current_order.remove(bot_order)
+    #     # if(not self.current_order_b1 or not self.current_order_b2):
+    #     #     # if self.orders is None:
+    #     #     self.process_orders(controller)
+    #     #     # else:
+    #     #     #     self.update_orders(controller)
+    #     #     self.current_order_b1 = self.orders[0] if len(self.orders) > 0 else None
+    #     #     self.current_order_b2 = self.orders[1] if len(self.orders) > 1 else None
+        
+    #     self.run_game(controller, my_bots[0])
+    #     self.run_game(controller, my_bots[1])
+    #         # for order in self.orders:
+    #         #     # print("Check: ", order["claimed_by"])
+    #         #     # print(order)
+    #         #     if order["claimed_by"] is None:
+    #         #         self.current_order = order
+    #         #         print(self.current_order)
+    #         #         print(controller.get_turn())
+    #         #         break
     def play_turn(self, controller: RobotController):
         my_bots = controller.get_team_bot_ids(controller.get_team())
         if not my_bots: return
-    
-        self.my_bot_id = my_bots[0]
-        bot_id = self.my_bot_id
 
-        # self.orders = controller.get_orders(controller.get_team())
-        if(not self.current_order):
-            # if self.orders is None:
-            self.process_orders(controller)
-            # else:
-            #     self.update_orders(controller)
-            for order in self.orders:
-                # print("Check: ", order["claimed_by"])
-                # print(order)
-                if order["claimed_by"] is None and order["reward"] > order["cost"] and order["p_success"] > 0.5:
-                    if self.state == States.NOTHING:
-                        self.state = States.INIT
-                    self.current_order = order
-                    print(self.current_order)
-                    print(controller.get_turn())
-                    break
+        # Initialize state for new bots
+        for bot_id in my_bots:
+            if bot_id not in self.state:
+                self.state[bot_id] = States.INIT
+                self.current_order[bot_id] = None
+                self.b_pos_x[bot_id] = None
+                self.b_pos_y[bot_id] = None
+        
+        # Assign orders to bots that don't have one
+        for bot_id in my_bots:
+            if self.current_order.get(bot_id) is None:
+                self.process_orders(controller)
+                
+                # Get list of already assigned order IDs
+                assigned_order_ids = set()
+                for bid in my_bots:
+                    if bid in self.current_order and self.current_order[bid] is not None:
+                        assigned_order_ids.add(self.current_order[bid]["order_id"])
+                
+                # Find an unassigned order
+                for order in self.orders:
+                    if order["order_id"] not in assigned_order_ids:
+                        self.current_order[bot_id] = order
+                        print(f"assigned order {order['order_id']} to bot {bot_id}")
+                        break
+        
+        # Run each bot
+        for bot_id in my_bots:
+            self.run_game(controller, bot_id)
+
+    def run_game(self, controller: RobotController, bot_id: int):
+
+        # my_bots = controller.get_team_bot_ids(controller.get_team())
+        # if not my_bots: return
+    
+        # self.my_bot_id = my_bots[0]
+        # bot_id = self.my_bot_id
+
+        # # self.orders = controller.get_orders(controller.get_team())
+        # if(not self.current_order):
+        #     # if self.orders is None:
+        #     self.process_orders(controller)
+        #     # else:
+        #     #     self.update_orders(controller)
+        #     for order in self.orders:
+        #         # print("Check: ", order["claimed_by"])
+        #         # print(order)
+        #         if order["claimed_by"] is None:
+        #             self.current_order = order
+        #             print(self.current_order)
+        #             print(controller.get_turn())
+        #             break
         
         
         bot_info = controller.get_bot_state(bot_id)
         bx, by = bot_info['x'], bot_info['y']
+        self.b_pos_x[bot_id] = bx
+        self.b_pos_y[bot_id] = by
 
         if self.assembly_counter is None:
             self.assembly_counter = self.find_nearest_tile(controller, bx, by, "COUNTER")
@@ -264,34 +305,33 @@ class BotPlayer:
         wx, wy = self.sink_pos
         stx, sty = self.sinktable_pos
 
-        if not self.get_bfs_path(controller, (bx, by), (cx, cy)) or not self.get_bfs_path(controller, (bx, by), (kx, ky)) or not self.get_bfs_path(controller, (bx, by), (ux, uy)) or not self.get_bfs_path(controller, (bx, by), (wx, wy)) or not self.get_bfs_path(controller, (bx, by), (stx, sty)):
-            return
-
-        # if self.state in [2, 8, 10] and bot_info.get('holding'):
-        #     self.state = 16
+        # if self.state[bot_id] in [2, 8, 10] and bot_info.get('holding'):
+        #     self.state[bot_id] = 16
 
         #state 0: init + checking the pan
+            
+        if bot_id not in self.state:
+            self.state[bot_id] = States.INIT
 
-        print(self.state)
-        if self.state == States.INIT:
-            if(not self.current_order):
-                self.state = States.NOTHING
+        if self.state[bot_id] == States.INIT:
+            if(not self.current_order[bot_id]):
+                self.state[bot_id] = States.NOTHING
             else:
                 kTile = controller.get_tile(controller.get_team(), kx, ky)
                 uTile = controller.get_tile(controller.get_team(), ux, uy)
                 if kTile and isinstance(kTile.item, Pan) and uTile and isinstance(uTile.item, Plate):
-                    self.state = States.BUY_FOOD
+                    self.state[bot_id] = States.BUY_FOOD
                 elif kTile and isinstance(kTile.item, Pan):
-                    self.state = States.BUY_PLATE
+                    self.state[bot_id] = States.BUY_PLATE
                 else:
-                    self.state = States.BUY_PAN
+                    self.state[bot_id] = States.BUY_PAN
 
-        elif self.state == States.BUY_PAN:
+        elif self.state[bot_id] == States.BUY_PAN:
             holding = bot_info.get('holding')
             if holding: # check if it is a pan if needed
                 if self.move_towards(controller, bot_id, kx, ky):
                     if controller.place(bot_id, kx, ky):
-                        self.state = States.INIT
+                        self.state[bot_id] = States.INIT
             else:
                 shop_pos = self.find_nearest_tile(controller, bx, by, "SHOP")
                 if not shop_pos: return
@@ -300,132 +340,128 @@ class BotPlayer:
                     if controller.get_team_money(controller.get_team()) >= ShopCosts.PAN.buy_cost:
                         controller.buy(bot_id, ShopCosts.PAN, sx, sy)
 
-        elif self.state == States.BUY_FOOD:
-            if len(self.current_order["required"]) == 0:
-                self.state = States.SUBMIT
-            elif bot_info["holding"]:
-                self.state = States.TRASH
+        elif self.state[bot_id] == States.BUY_FOOD:
+            if len(self.current_order[bot_id]["required"]) == 0:
+                self.state[bot_id] = States.SUBMIT
             else:
                 shop_pos = self.find_nearest_tile(controller, bx, by, "SHOP")
                 sx, sy = shop_pos
                 if self.move_towards(controller, bot_id, sx, sy):
-                    buyFood = self.current_order["required"].pop()
+                    buyFood = self.current_order[bot_id]["required"].pop()
                     if(buyFood == "MEAT"):
                         if controller.get_team_money(controller.get_team()) >= FoodType.MEAT.buy_cost:
                             if controller.buy(bot_id, FoodType.MEAT, sx, sy):
-                                self.state = States.PLACE_ON_COUNTER
+                                self.state[bot_id] = States.PLACE_ON_COUNTER
                     elif(buyFood == "EGG"):
                         if controller.get_team_money(controller.get_team()) >= FoodType.EGG.buy_cost:
                             if controller.buy(bot_id, FoodType.EGG, sx, sy):
-                                self.state = States.COOK_FOOD
+                                self.state[bot_id] = States.COOK_FOOD
                     elif(buyFood == "ONIONS"):
                         if controller.get_team_money(controller.get_team()) >= FoodType.ONIONS.buy_cost:
                             if controller.buy(bot_id, FoodType.ONIONS, sx, sy):
-                                self.state = States.PLACE_ON_COUNTER
+                                self.state[bot_id] = States.PLACE_ON_COUNTER
                     elif(buyFood == "NOODLES"):
+                        print("checked")
                         if controller.get_team_money(controller.get_team()) >= FoodType.NOODLES.buy_cost:
                             if controller.buy(bot_id, FoodType.NOODLES, sx, sy):
-                                self.state = States.ADD_FOOD
+                                self.state[bot_id] = States.ADD_FOOD
                     elif(buyFood == "SAUCE"):
                         if controller.get_team_money(controller.get_team()) >= FoodType.SAUCE.buy_cost:
                             if controller.buy(bot_id, FoodType.SAUCE, sx, sy):
-                                self.state = States.ADD_FOOD
+                                self.state[bot_id] = States.ADD_FOOD
 
-        elif self.state == States.PLACE_ON_COUNTER:
+        elif self.state[bot_id] == States.PLACE_ON_COUNTER:
             if self.move_towards(controller, bot_id, cx, cy):
                 if controller.place(bot_id, cx, cy):
-                    self.state = States.CHOP_FOOD
+                    self.state[bot_id] = States.CHOP_FOOD
 
-        elif self.state == States.CHOP_FOOD:
+        elif self.state[bot_id] == States.CHOP_FOOD:
             if self.move_towards(controller, bot_id, cx, cy):
                 if controller.chop(bot_id, cx, cy):
-                    self.state = States.PICKUP_CHOPPED
+                    self.state[bot_id] = States.PICKUP_CHOPPED
 
         #state 5: pickup meat
-        elif self.state == States.PICKUP_CHOPPED:
+        elif self.state[bot_id] == States.PICKUP_CHOPPED:
             if self.move_towards(controller, bot_id, cx, cy):
                 if controller.pickup(bot_id, cx, cy):
                     food = controller.get_bot_state(bot_id)["holding"]
                     # print(food)
                     if(food["food_id"] in [0, 2]):
-                        self.state = States.COOK_FOOD
+                        self.state[bot_id] = States.COOK_FOOD
                     else:
-                        self.state = States.ADD_FOOD
+                        self.state[bot_id] = States.ADD_FOOD
 
-        elif self.state == States.COOK_FOOD:
+        elif self.state[bot_id] == States.COOK_FOOD:
             if self.move_towards(controller, bot_id, kx, ky):
                 # Using the NEW logic where place() starts cooking automatically
                 if controller.place(bot_id, kx, ky):
-                    self.state = States.WAIT_AND_TAKE
+                    self.state[bot_id] = States.WAIT_AND_TAKE
 
         #state 8: buy the plate
-        elif self.state == States.BUY_PLATE:
+        elif self.state[bot_id] == States.BUY_PLATE:
             shop_pos = self.find_nearest_tile(controller, bx, by, "SHOP")
             sx, sy = shop_pos
             if self.move_towards(controller, bot_id, sx, sy):
                 if controller.get_team_money(controller.get_team()) >= ShopCosts.PLATE.buy_cost:
                     if controller.buy(bot_id, ShopCosts.PLATE, sx, sy):
-                        self.state = States.PLACE_PLATE
+                        self.state[bot_id] = States.PLACE_PLATE
 
-        elif self.state == States.PLACE_PLATE:
+        elif self.state[bot_id] == States.PLACE_PLATE:
             if not bot_info["holding"]:
                 controller.pickup(bot_id, bx, by)
             else:
                 if self.move_towards(controller, bot_id, ux, uy):
                     if controller.place(bot_id, ux, uy):
-                        self.state = States.INIT
+                        self.state[bot_id] = States.INIT
 
-        elif self.state == States.ADD_FOOD:
+        elif self.state[bot_id] == States.ADD_FOOD:
             if self.move_towards(controller, bot_id, ux, uy):
                 if controller.add_food_to_plate(bot_id, ux, uy):
-                    if self.current_order["expires_turn"] <= controller.get_turn():
-                        self.state = States.TRASH
-                        self.current_order = None
+                    if self.current_order[bot_id]["expires_turn"] <= controller.get_turn():
+                        self.state[bot_id] = States.TRASH
+                        self.current_order[bot_id] = None
                     else:
-                        self.state = States.INIT
+                        self.state[bot_id] = States.INIT
 
-        elif self.state == States.WAIT_AND_TAKE:
+        elif self.state[bot_id] == States.WAIT_AND_TAKE:
             if self.move_towards(controller, bot_id, kx, ky):
                 tile = controller.get_tile(controller.get_team(), kx, ky)
                 if tile and isinstance(tile.item, Pan) and tile.item.food:
                     food = tile.item.food
                     if food.cooked_stage == 1:
                         if controller.take_from_pan(bot_id, kx, ky):
-                            self.state = States.ADD_FOOD
+                            self.state[bot_id] = States.ADD_FOOD
                     elif food.cooked_stage == 2:
                         if controller.take_from_pan(bot_id, kx, ky):
-                            self.state = States.TRASH
+                            self.state[bot_id] = States.TRASH
 
-        elif self.state == States.SUBMIT:
+        elif self.state[bot_id] == States.SUBMIT:
             if self.move_towards(controller, bot_id, ux, uy):
                 if not bot_info["holding"]:
                     controller.pickup(bot_id, ux, uy)
                 else:
                     if controller.submit(bot_id, ux, uy):
-                        self.current_order = None
-                        self.state = States.WASH_DISH
+                        self.current_order[bot_id] = None
+                        self.state[bot_id] = States.WASH_DISH
                     else:
-                        if self.current_order["expires_turn"] <= controller.get_turn():
-                            self.current_order = None
-                        self.state = States.TRASH
+                        self.state[bot_id] = States.TRASH
         
-        elif self.state == States.WASH_DISH:
+        elif self.state[bot_id] == States.WASH_DISH:
             if self.move_towards(controller, bot_id, wx, wy):
                 st_tile = controller.get_tile(controller.get_team(), stx, sty)
 
                 if st_tile and st_tile.num_clean_plates > 0:
-                    self.state = States.GET_PLATE_FROM_SINKTABLE
+                    self.state[bot_id] = States.GET_PLATE_FROM_SINKTABLE
                 else:
-                    if not controller.wash_sink(bot_id, wx, wy):
-                        self.state = States.INIT
+                    controller.wash_sink(bot_id, wx, wy)
                     
         
-        elif self.state == States.GET_PLATE_FROM_SINKTABLE:
+        elif self.state[bot_id] == States.GET_PLATE_FROM_SINKTABLE:
             if self.move_towards(controller, bot_id, stx, sty):
                 if controller.take_clean_plate(bot_id, stx, sty):
-                    self.state = States.PLACE_PLATE
+                    self.state[bot_id] = States.PLACE_PLATE
 
-        elif self.state == States.TRASH:
+        elif self.state[bot_id] == States.TRASH:
             if not bot_info["holding"]:
                 controller.pickup(bot_id, ux, uy)
             else:
@@ -436,22 +472,22 @@ class BotPlayer:
                     item = bot_info["holding"]
                     if controller.trash(bot_id, tx, ty):
                         if item["type"] == "Food":
-                            self.current_order["required"].append(item.food_name)
+                            self.current_order[bot_id]["required"].append(item.food_name)
                         elif item["type"] == "Plate":
-                            self.state = States.PLACE_PLATE
+                            self.state[bot_id] = States.PLACE_PLATE
                         else:
-                            self.state = States.INIT #restart
-        elif self.state == States.NOTHING:
-            for i in range(len(my_bots)):
-                self.my_bot_id = my_bots[i]
-                bot_id = self.my_bot_id
+                            self.state[bot_id] = States.INIT #restart
+        # elif self.state[bot_id] == States.NOTHING:
+            # for i in range(len(my_bots)):
+            #     self.my_bot_id = my_bots[i]
+            #     bot_id = self.my_bot_id
                 
-                bot_info = controller.get_bot_state(bot_id)
-                bx, by = bot_info['x'], bot_info['y']
+            #     bot_info = controller.get_bot_state(bot_id)
+            #     bx, by = bot_info['x'], bot_info['y']
 
-                dx = random.choice([-1, 1])
-                dy = random.choice([-1, 1])
-                nx,ny = bx + dx, by + dy
-                if controller.can_move(bot_id, nx, ny):
-                    controller.move(bot_id, nx, ny)
-                    return
+            #     dx = random.choice([-1, 1])
+            #     dy = random.choice([-1, 1])
+            #     nx,ny = bx + dx, by + dy
+            #     if controller.can_move(bot_id, nx, ny):
+            #         controller.move(bot_id, nx, ny)
+            #         return
