@@ -172,10 +172,11 @@ class BotPlayer:
                     for assigned_order in self.current_order:
                         if assigned_order is not None and order["order_id"] == assigned_order["order_id"]:
                             break
-                    else:
+                    else:   
                         self.current_order[bot_id] = order
                         print("assigned order: ", order)
                         print("bot_id: ", bot_id)
+                        break
         
         # raise Exception("test")
         #         self.current_order[bot_id] = self.orders[0] if len(self.orders) > 0 and self.else None

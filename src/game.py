@@ -60,7 +60,7 @@ class Game:
         replay_path: Optional[str] = None,
         render: bool = False,
         turn_limit: int = GameConstants.TOTAL_TURNS,
-        per_turn_timeout_s: float = 0.6,
+        per_turn_timeout_s: float = 0.7,
         fps_cap: int = 30,
     ):
         self.render_enabled = render
@@ -380,7 +380,7 @@ def main():
     ap.add_argument("--replay", default=None, help="optional output replay json path")
     ap.add_argument("--render", action="store_true", help="enable pygame rendering")
     ap.add_argument("--turns", type=int, default=GameConstants.TOTAL_TURNS, help="turn limit")
-    ap.add_argument("--timeout", type=float, default=0.6, help="per-turn timeout seconds per bot")
+    ap.add_argument("--timeout", type=float, default=0.7, help="per-turn timeout seconds per bot")
     ap.add_argument("--fps", type=int, default=30, help="fps cap when rendering")
     args = ap.parse_args()
 
