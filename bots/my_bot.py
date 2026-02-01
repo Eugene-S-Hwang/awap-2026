@@ -135,35 +135,6 @@ class BotPlayer:
             order['p_success'] = p_success
         self.orders.sort(key=lambda x: x['ev'], reverse=True)
 
-    def cook_meat(self, controller: RobotController, bot_id: int):
-        bot_info = controller.get_bot_state(bot_id)
-        bx, by = bot_info['x'], bot_info['y']
-        if self.cooker_loc is None:
-            self.cooker_loc = self.find_nearest_tile(controller, bx, by, "COOKER")
-        if self.cooker_loc is None: return
-        cx, cy = self.cooker_loc
-        if self.move_towards(controller, bot_id, cx, cy):
-            controller.cook(bot_id)
-
-    def chop_veg(self, controller: RobotController, bot_id: int):
-        bot_info = controller.get_bot_state(bot_id)
-        bx, by = bot_info['x'], bot_info['y']
-        if self.cooker_loc is None:
-            self.cooker_loc = self.find_nearest_tile(controller, bx, by, "COOKER")
-        if self.cooker_loc is None: return
-        cx, cy = self.cooker_loc
-        if self.move_towards(controller, bot_id, cx, cy):
-            controller.chop(bot_id)
-
-    def buy_and_place_ingredient(self, controller: RobotController, bot_id: int, ingredient_name: str):
-        bot_info = controller.get_bot_state(bot_id)
-        bx, by = bot_info['x'], bot_info['y']
-        if self.assembly_counter is None:
-            self.assembly_counter = self.find_nearest_tile(controller, bx, by, "COUNTER")
-        if self.assembly_counter is None: return
-        cx, cy = self.assembly_counter
-        if self.move_towards(controller, bot_id, cx, cy):
-            controller.buy_and_place_ingredient(bot_id, ingredient_name)
         
 
     def play_turn(self, controller: RobotController):
