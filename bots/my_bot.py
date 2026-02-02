@@ -300,8 +300,8 @@ class BotPlayer:
                     if self.state == States.NOTHING:
                         self.state = States.INIT
                     self.current_order = order
-                    print(self.current_order)
-                    print(controller.get_turn())
+                    # print(self.current_order)
+                    # print(controller.get_turn())
                     break
         
         
@@ -340,7 +340,7 @@ class BotPlayer:
 
         #state 0: init + checking the pan
 
-        print(self.state)
+        # print(self.state)
         if self.state == States.INIT:
             if(not self.current_order):
                 self.state = States.NOTHING
